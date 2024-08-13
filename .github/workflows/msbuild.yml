@@ -1,0 +1,224 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+
+-- GUI Setup
+local screenGui = Instance.new("ScreenGui", game.CoreGui)
+screenGui.Name = "ESP_Toggle_GUI"
+
+local frame = Instance.new("Frame", screenGui)
+frame.Position = UDim2.new(0.05, 0, 0.05, 0)
+frame.Size = UDim2.new(0, 200, 0, 150)
+frame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+frame.BorderSizePixel = 0
+
+local function createToggleButton(name, parent, position)
+    local button = Instance.new("TextButton", parent)
+    button.Text = name
+    button.Size = UDim2.new(0, 150, 0, 30)
+    button.Position = position
+    button.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+    button.BorderSizePixel = 0
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextSize = 14
+
+    local toggleState = false
+    button.MouseButton1Click:Connect(function()
+        toggleState = not toggleState
+        button.BackgroundColor3 = toggleState and Color3.fromRGB(0, 100, 0) or Color3.fromRGB(70, 70, 70)
+    end)
+
+    return button, function() return toggleState end
+end
+
+local espHighlightsButton, isHighlightsEnabled = createToggleButton("ESP Highlights", frame, UDim2.new(0, 25, 0, 10))
+local espSkeletonsButton, isSkeletonsEnabled = createToggleButton("ESP Skeletons", frame, UDim2.new(0, 25, 0, 50))
+local espBoxesButton, isBoxesEnabled = createToggleButton("ESP Boxes", frame, UDim2.new(0, 25, 0, 90))
+
+-- Function to create a Highlight for a player
+local function createHighlight(player)
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "PlayerHighlight"
+    highlight.FillTransparency = 0.5
+    highlight.FillColor = Color3.fromRGB(255, 128, 128) -- Light red color
+    highlight.OutlineTransparency = 0.5
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+
+    return highlight
+end
+
+-- Function to create skeleton ESP lines between parts
+local function createSkeletonLines(player)
+    local lines = {}
+    local character = player.Character
+
+    -- List of joints to connect with lines
+    local connections = {
+        {"Head", "UpperTorso"},
+        {"UpperTorso", "LowerTorso"},
+        {"UpperTorso", "LeftUpperArm"},
+        {"LeftUpperArm", "LeftLowerArm"},
+        {"LeftLowerArm", "LeftHand"},
+        {"UpperTorso", "RightUpperArm"},
+        {"RightUpperArm", "RightLowerArm"},
+        {"RightLowerArm", "RightHand"},
+        {"LowerTorso", "LeftUpperLeg"},
+        {"LeftUpperLeg", "LeftLowerLeg"},
+        {"LeftLowerLeg", "LeftFoot"},
+        {"LowerTorso", "RightUpperLeg"},
+        {"RightUpperLeg", "RightLowerLeg"},
+        {"RightLowerLeg", "RightFoot"}
+    }
+
+    -- Helper function to draw one line between two parts
+    local function drawLineBetweenParts(part1, part2)
+        local attachment0 = Instance.new("Attachment", part1)
+        local attachment1 = Instance.new("Attachment", part2)
+
+        local beam = Instance.new("Beam")
+        beam.Attachment0 = attachment0
+        beam.Attachment1 = attachment1
+        beam.Color = ColorSequence.new(Color3.fromRGB(255, 255, 0)) -- Yellow color
+        beam.Width0 = 0.05
+        beam.Width1 = 0.05
+        beam.FaceCamera = true
+        beam.Parent = part1
+        
+        return beam, attachment0, attachment1
+    end
+
+    -- Create lines based on the connections list
+    for _, connection in pairs(connections) do
+        local part0 = character:FindFirstChild(connection[1])
+        local part1 = character:FindFirstChild(connection[2])
+
+        if part0 and part1 then
+            local beam, att0, att1 = drawLineBetweenParts(part0, part1)
+            table.insert(lines, {beam, att0, att1})
+        end
+    end
+
+return lines
+end
+
+-- Function to create an ESP box for a player
+local function createESPBox(player)
+local box = Instance.new("BoxHandleAdornment")
+box.Name = "ESPBox"
+box.Adornee = player.Character
+box.AlwaysOnTop = true
+box.ZIndex = 10
+box.Size = player.Character:GetExtentsSize() + Vector3.new(0.5, 0.5, 0.5)
+box.Color3 = Color3.fromRGB(0, 255, 0) -- Green color
+box.Transparency = 0.7
+return box
+end
+
+-- Tables to keep track of highlights, skeletons, and boxes
+local highlights = {}
+local skeletons = {}
+local boxes = {}
+
+-- Function to update ESP elements
+local function updateESP()
+for i, _ in pairs(highlights) do
+    if not i.Character or not i.Character:FindFirstChild("Head") then
+        if highlights[i] then
+            highlights[i]:Destroy()
+            highlights[i] = nil
+        end
+        if skeletons[i] then
+            for _, parts in pairs(skeletons[i]) do
+                parts[1]:Destroy() -- Destroy Beam
+                parts[2]:Destroy() -- Destroy Attachment0
+                parts[3]:Destroy() -- Destroy Attachment1
+            end
+            skeletons[i] = nil
+        end
+        if boxes[i] then
+            boxes[i]:Destroy()
+            boxes[i] = nil
+        end
+    end
+end
+
+for _, player in pairs(Players:GetPlayers()) do
+    if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") then
+        if isHighlightsEnabled() and not highlights[player] then
+            highlights[player] = createHighlight(player)
+            highlights[player].Parent = player.Character
+        elseif not isHighlightsEnabled() and highlights[player] then
+            highlights[player]:Destroy()
+            highlights[player] = nil
+        end
+
+        if isSkeletonsEnabled() and not skeletons[player] then
+            skeletons[player] = createSkeletonLines(player)
+        elseif not isSkeletonsEnabled() and skeletons[player] then
+            for _, parts in pairs(skeletons[player]) do
+                parts[1]:Destroy() -- Destroy Beam
+                parts[2]:Destroy() -- Destroy Attachment0
+                parts[3]:Destroy() -- Destroy Attachment1
+            end
+            skeletons[player] = nil
+        end
+
+        if isBoxesEnabled() and not boxes[player] then
+            boxes[player] = createESPBox(player)
+            boxes[player].Parent = player.Character
+        elseif not isBoxesEnabled() and boxes[player] then
+            boxes[player]:Destroy()
+            boxes[player] = nil
+        end
+    end
+end
+end
+
+-- Connect function to RenderStepped for continuous update
+RunService.RenderStepped:Connect(updateESP)
+
+-- Clean up highlights, skeletons, and boxes when players leave
+Players.PlayerRemoving:Connect(function(player)
+if highlights[player] then
+    highlights[player]:Destroy()
+    highlights[player] = nil
+end
+if skeletons[player] then
+    for _, parts in pairs(skeletons[player]) do
+        parts[1]:Destroy() -- Destroy Beam
+        parts[2]:Destroy() -- Destroy Attachment0
+        parts[3]:Destroy() -- Destroy Attachment1
+    end
+    skeletons[player] = nil
+end
+if boxes[player] then
+    boxes[player]:Destroy()
+    boxes[player] = nil
+end
+end)
+
+-- Additional cleanup when the script is destroyed
+local function cleanUp()
+for _, player in pairs(Players:GetPlayers()) do
+    if highlights[player] then
+        highlights[player]:Destroy()
+        highlights[player] = nil
+    end
+    if skeletons[player] then
+        for _, parts in pairs(skeletons[player]) do
+            parts[1]:Destroy()
+            parts[2]:Destroy()
+            parts[3]:Destroy()
+        end
+        skeletons[player] = nil
+    end
+    if boxes[player] then
+        boxes[player]:Destroy()
+        boxes[player] = nil
+    end
+end
+end
+
+game:BindToClose(cleanUp)
